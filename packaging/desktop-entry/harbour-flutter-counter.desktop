@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Flutter Counter
+Icon=harbour-flutter-counter
+Exec=harbour-flutter-counter
+X-Nemo-Application-Type=no-invoker
+
+[X-Sailjail]
+OrganizationName=org.flutter
+ApplicationName=FlutterCounter
+Permissions=
