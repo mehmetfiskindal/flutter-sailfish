@@ -1,0 +1,5 @@
+# Keep LF line endings everywhere; the RPM specs and desktop files break with CRLF.
+* text=auto eol=lf
+
+*.png binary
+*.ps1 text eol=lf
