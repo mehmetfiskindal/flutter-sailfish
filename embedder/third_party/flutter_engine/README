@@ -1,0 +1,4 @@
+flutter_embedder.h is flutter/shell/platform/embedder/embedder.h from the Flutter commit pinned in
+engine/flutter_engine.lock (the engine API header), unmodified, saved under the name the engine
+archives use. LICENSE is the Flutter license. The engine library itself is not part of this
+repository: build it as described in docs/engine-build.md.

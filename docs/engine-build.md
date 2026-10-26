@@ -1,30 +1,20 @@
-# Engine build notes
+# Working notes and findings
+
+**These are working notes, written in the order the work happened. To build, use
+[`building.md`](building.md).** Sections are dated; where an early section was later replaced it says so.
+Some figures describe the author's machine (Windows 11, Docker Desktop, Redmi Note 8).
 
 ## Pinned versions
 
 See `engine/flutter_engine.lock`. Current pin: Flutter 3.47.8 (stable), engine `cf636b1dfb818dd6a3ff16e390e93b1a036969c8`, Dart 3.13.7.
 
-## Locations (Windows host)
+## First attempt: engine source checked out on Windows (historical)
 
-| What | Path |
-|---|---|
-| Flutter SDK (app builds) | `tools\flutter` |
-| depot_tools | `C:\src\flutter-engine\depot_tools` |
-| Flutter + Engine monorepo | `C:\src\flutter-engine\flutter` (engine sources under `engine\src`) |
-| `.gclient` | `C:\src\flutter-engine\flutter\.gclient` (solution name `.`) |
-
-Engine and depot_tools live outside OneDrive on purpose (tens of GB, many small files).
-
-## How the checkout was made
-
-```powershell
-$env:PATH = "C:\src\flutter-engine\depot_tools;$env:PATH"
-$env:DEPOT_TOOLS_WIN_TOOLCHAIN = "0"
-cd C:\src\flutter-engine\flutter
-gclient sync -D --no-history --nohooks -j8
-```
-
-Hooks were skipped (`--nohooks`): sysroots and toolchains are not downloaded yet.
+The first checkout was made on Windows (`gclient sync -D --no-history --nohooks -j8` in
+`C:\src\flutter-engine\flutter`, outside OneDrive because of the size). It was only used to look at
+the sources: the engine cannot be built for Linux/aarch64 from Windows. The engine is now built in a
+Linux container (`scripts/build-engine.sh`), and the Flutter SDK for app builds lives at
+`C:\src\flutter-sdk`. The notes below still apply.
 
 ## flutter doctor (2026-10-25)
 
@@ -36,7 +26,7 @@ Hooks were skipped (`--nohooks`): sysroots and toolchains are not downloaded yet
 ## Sailfish SDK (found 2026-10-25)
 
 - SDK on host: `C:\SailfishOS` (release 3.13.5); `sfdk.exe` is `C:\SailfishOS\bin\sfdk.exe`, not on PATH.
-- Build engine runs in Docker: container `sailfish-sdk-build-engine_mfisk` (image `sailfish-sdk-build-engine:mfisk`, 1.35 GB). `sfdk` is also at `/usr/bin/sfdk` inside it.
+- Build engine runs in Docker: container `sailfish-sdk-build-engine_<user>` (1.35 GB image). `sfdk` is also at `/usr/bin/sfdk` inside it.
 - Targets (`sfdk tools list`): `SailfishOS-5.1.0.11-{aarch64,armv7hl,i486}` and the early-access `SailfishOS-5.1.0.11EA-{aarch64,armv7hl,i486}`.
 - `sfdk.exe` warns "Not running under MSYS shell" and prints D-Bus NoReply errors when run from PowerShell, but `tools list` still works.
 
@@ -77,7 +67,7 @@ Base URL: `https://storage.googleapis.com/flutter_infra_release/flutter/<engine_
 Run on the device:
 
 ```sh
-cd /home/defaultuser/flutter-poc
+cd ~/flutter-poc
 LD_LIBRARY_PATH=. ./flutter-sailfish-runner ./flutter_assets ./icudtl.dat
 ```
 

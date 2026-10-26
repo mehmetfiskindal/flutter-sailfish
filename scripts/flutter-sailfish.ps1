@@ -10,6 +10,11 @@
 #   flutter-sailfish.ps1 build   -App <dir>                  build an AOT bundle: plugins, native
 #                                                            plugins, permissions, kernel, assets,
 #                                                            libapp.so
+#   flutter-sailfish.ps1 runner  [-Out <file>]               build the runner for aarch64
+#   flutter-sailfish.ps1 package [-Out <dir>]                build the runtime and app RPMs
+#
+# Order for a fresh checkout: build the engine (docs\engine-build.md), scripts\export-engine.ps1,
+# then "runner", "build -App <dir>" and "package". See docs\building.md.
 #
 # The flutter tool does not know the Sailfish platform, so what it would generate for Linux,
 # Android and so on is produced here by scripts\sailfish_plugins.dart. A plugin is picked up
@@ -25,14 +30,25 @@
 #           nativeLibrary: my_plugin            # optional, default: the package name
 #           sailjailPermissions: [Internet]     # optional, added to the app's desktop entry
 param(
-  [Parameter(Position = 0)][ValidateSet('plugins', 'native', 'permissions', 'build', 'help')][string]$Command = 'help',
+  [Parameter(Position = 0)][ValidateSet('plugins', 'native', 'permissions', 'build', 'runner', 'package', 'help')][string]$Command = 'help',
   [string]$App = '.',
   [string]$Out,
   [string]$FlutterSdk = 'C:\src\flutter-sdk',
-  [string]$SdkContainer = 'sailfish-sdk-build-engine_mfisk',
-  [string]$SdkTarget = 'SailfishOS-5.1.0.11-aarch64'
+  [string]$SdkContainer,
+  [string]$SdkTarget = 'SailfishOS-5.1.0.11-aarch64',
+  [string]$EngineDir
 )
 $ErrorActionPreference = 'Continue'
+
+# The Sailfish SDK's build engine runs as a Docker container named
+# sailfish-sdk-build-engine[_<user>]; use the running one unless -SdkContainer is given.
+function Resolve-SdkContainer {
+  if ($script:SdkContainer) { return }
+  $found = @(docker ps --filter 'name=sailfish-sdk-build-engine' --format '{{.Names}}')
+  if ($found.Count -eq 0) { throw 'no running sailfish-sdk-build-engine container; start the Sailfish SDK or pass -SdkContainer' }
+  $script:SdkContainer = $found[0]
+}
+if ($Command -in 'native', 'permissions', 'runner', 'package') { Resolve-SdkContainer }
 
 switch ($Command) {
   'plugins' {
@@ -95,10 +111,57 @@ switch ($Command) {
     }
     if ($wanted.Count -eq 0) { Write-Host 'flutter-sailfish: no Sailjail permissions requested' }
   }
+  'runner' {
+    # Builds the runner for aarch64. Needs dist\aot\engine\libflutter_engine.so
+    # (scripts\export-engine.ps1) or -EngineDir with that file.
+    $repo = Split-Path -Parent $PSScriptRoot
+    $libDir = if ($EngineDir) { $EngineDir } else { Join-Path $repo 'dist\aot\engine' }
+    $lib = Join-Path $libDir 'libflutter_engine.so'
+    if (-not (Test-Path $lib)) { throw "$lib not found; run scripts\export-engine.ps1 first." }
+    if (-not $Out) { $Out = Join-Path $repo 'dist\aot\app\flutter-sailfish-runner' }
+    $stage = '/home/mersdk/runner-stage'
+    docker exec -u root $SdkContainer sh -c "rm -rf $stage && mkdir -p $stage/lib && chown -R mersdk $stage" | Out-Null
+    docker cp (Join-Path $repo 'embedder') "${SdkContainer}:$stage/embedder"
+    docker cp $lib "${SdkContainer}:$stage/lib/libflutter_engine.so"
+    docker cp (Join-Path $PSScriptRoot 'build-runner.sh') "${SdkContainer}:$stage/build-runner.sh"
+    docker exec -u mersdk -e "SFOS_TARGET=$SdkTarget" $SdkContainer `
+      sh "$stage/build-runner.sh" "$stage/embedder" "$stage/lib" "$stage/flutter-sailfish-runner"
+    if ($LASTEXITCODE -ne 0) { throw 'building the runner failed' }
+    New-Item -ItemType Directory -Force (Split-Path -Parent $Out) | Out-Null
+    docker cp "${SdkContainer}:$stage/flutter-sailfish-runner" $Out
+    Write-Host "flutter-sailfish: runner written to $Out"
+  }
+  'package' {
+    # Builds the runtime and app RPMs from dist\aot\app (the output of "build" and "runner")
+    # into dist\rpm, or -Out.
+    $repo = Split-Path -Parent $PSScriptRoot
+    $dist = Join-Path $repo 'dist\aot\app'
+    $engine = Join-Path $repo 'dist\aot\engine'
+    foreach ($f in 'libflutter_engine.so', 'icudtl.dat') {
+      if (Test-Path (Join-Path $engine $f)) { Copy-Item (Join-Path $engine $f) $dist -Force }
+    }
+    foreach ($f in 'flutter-sailfish-runner', 'libflutter_engine.so', 'icudtl.dat', 'libapp.so', 'flutter_assets') {
+      if (-not (Test-Path (Join-Path $dist $f))) { throw "$f missing in $dist; run runner, export-engine and build first." }
+    }
+    if (-not $Out) { $Out = Join-Path $repo 'dist\rpm' }
+    $stage = '/home/mersdk/package-stage'
+    docker exec -u root $SdkContainer sh -c "rm -rf $stage && mkdir -p $stage/dist/aot $stage/scripts && chown -R mersdk $stage" | Out-Null
+    docker cp $dist "${SdkContainer}:$stage/dist/aot/app"
+    docker cp (Join-Path $repo 'packaging') "${SdkContainer}:$stage/packaging"
+    docker cp (Join-Path $PSScriptRoot 'build-rpm.sh') "${SdkContainer}:$stage/scripts/build-rpm.sh"
+    docker exec -u mersdk -e "REPO=$stage" -e "SFOS_TARGET=$SdkTarget" $SdkContainer sh "$stage/scripts/build-rpm.sh"
+    if ($LASTEXITCODE -ne 0) { throw 'building the RPMs failed' }
+    New-Item -ItemType Directory -Force $Out | Out-Null
+    $rpms = @(docker exec -u mersdk $SdkContainer sh -c 'ls /home/mersdk/rpmtop/RPMS/aarch64')
+    foreach ($rpm in $rpms) {
+      docker cp "${SdkContainer}:/home/mersdk/rpmtop/RPMS/aarch64/$rpm" (Join-Path $Out $rpm)
+      Write-Host "flutter-sailfish: $(Join-Path $Out $rpm)"
+    }
+  }
   'build' {
     & (Join-Path $PSScriptRoot 'build-aot-app.ps1') -App $App -FlutterSdk $FlutterSdk
   }
   default {
-    Get-Content $PSCommandPath -TotalCount 28 | ForEach-Object { $_ -replace '^# ?', '' }
+    Get-Content $PSCommandPath -TotalCount 36 | ForEach-Object { $_ -replace '^# ?', '' }
   }
 }
