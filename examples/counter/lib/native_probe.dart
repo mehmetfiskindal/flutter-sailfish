@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:echo_plugin/echo_plugin.dart';
@@ -71,6 +72,50 @@ Future<List<String>> runNativeProbe() async {
     } on MissingPluginException {
       return 'OK (MissingPluginException)';
     }
+  });
+
+  // Event channel: the native side sends from its own thread.
+  await step('events 5 ticks', () async {
+    final values = await EchoPlugin.ticks(count: 5, intervalMs: 20).toList();
+    return '${values.toString() == '[1, 2, 3, 4, 5]' ? 'OK' : 'MISMATCH'} $values, stream ended';
+  });
+  await step('events error event', () async {
+    final done = Completer<void>();
+    final values = <Object?>[];
+    final errors = <String>[];
+    EchoPlugin.ticks(count: 5, intervalMs: 20, failAt: 3).listen(
+      values.add,
+      onError: (Object e) {
+        if (e is PlatformException) errors.add('${e.code}/${e.details}');
+      },
+      onDone: done.complete,
+    );
+    await done.future;
+    final ok = values.toString() == '[1, 2, 4, 5]' && errors.length == 1 && errors.first == 'tick_failed/3';
+    return '${ok ? 'OK' : 'MISMATCH'} values=$values errors=$errors';
+  });
+  await step('events cancel', () async {
+    final before = await EchoPlugin.streamStats();
+    final first = await EchoPlugin.ticks(count: 1000, intervalMs: 10).take(3).toList();
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    final after = await EchoPlugin.streamStats();
+    final cancelled = (after?['cancelled'] as int) - (before?['cancelled'] as int);
+    final completed = (after?['completed'] as int) - (before?['completed'] as int);
+    final ok = first.toString() == '[1, 2, 3]' && cancelled == 1 && completed == 0;
+    return '${ok ? 'OK' : 'MISMATCH'} got $first, native cancelled +$cancelled, completed +$completed';
+  });
+  await step('events listen again', () async {
+    final values = await EchoPlugin.ticks(count: 3, intervalMs: 10).toList();
+    return '${values.toString() == '[1, 2, 3]' ? 'OK' : 'MISMATCH'} $values';
+  });
+  await step('events 300 fast', () async {
+    final watch = Stopwatch()..start();
+    final values = await EchoPlugin.ticks(count: 300, intervalMs: 1).toList();
+    var inOrder = values.length == 300;
+    for (var i = 0; inOrder && i < values.length; i++) {
+      inOrder = values[i] == i + 1;
+    }
+    return '${inOrder ? 'OK' : 'MISMATCH'} ${values.length} events in order, ${watch.elapsedMilliseconds} ms';
   });
   return out;
 }

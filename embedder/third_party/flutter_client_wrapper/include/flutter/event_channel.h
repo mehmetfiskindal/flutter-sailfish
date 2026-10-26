@@ -89,10 +89,12 @@ class EventChannel {
               std::unique_ptr<StreamHandlerError<T>> error =
                   shared_handler->OnCancel(nullptr);
               if (error) {
+                // Sailfish: the upstream code also printed error_details, a
+                // std::unique_ptr<T> that has no operator<<, so this header did not compile
+                // for any plugin that used EventChannel<EncodableValue>.
                 std::cerr << "Failed to cancel existing stream: "
                           << (error->error_code) << ", "
-                          << (error->error_message) << ", "
-                          << (error->error_details);
+                          << (error->error_message);
               }
             }
             is_listening = true;

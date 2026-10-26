@@ -180,6 +180,14 @@ flutter:
 - `examples/echo_plugin` is now a real plugin package (Dart API in `lib/`, C++ in `sailfish/`), and `examples/counter` depends on it with a path dependency. The library built through the wrapper is identical to the one verified on the device earlier (same build id). Package `-13` was installed on the Redmi Note 8 and all six checks of the native plugin test reported OK, so building, packaging and loading through the wrapper works on the device. Whether the app was started from the app grid (inside Sailjail) or a terminal was not recorded.
 - Limits: only C++ sources compiled together with the standard codec (no extra libraries, no Qt, no per-plugin compiler flags); a plugin's `sailfish` entry cannot yet add Sailjail permissions to the desktop entry; the container names are parameters with this machine's defaults.
 
+## Event channels (2026-10-26, app package `-14`)
+
+`flutter::EventChannel` works through the runner's messenger. The echo plugin streams integers from a native `std::thread` (arguments: `count`, `intervalMs`, `failAt`) and stops it when Dart cancels. Checked on the Redmi Note 8 with the "Native plugin test": a 5-event stream arrives in order and ends; an error event (`PlatformException`, code `tick_failed`, details 3) arrives in the middle of the stream and the stream continues; cancelling after 3 events reaches the plugin exactly once and the thread stops (no completion counted); listening again after a cancel works; 300 events sent 1 ms apart from the background thread arrive complete and in order (436 ms).
+
+- **Upstream defect, patched in the vendored copy:** `event_channel.h` printed `error->error_details`, a `std::unique_ptr<T>` without `operator<<`, so any plugin instantiating `EventChannel<EncodableValue>` failed to compile. The patch drops the details from that log message and is marked in the file.
+- Events are sent from a non-platform thread: the runner's `Send` calls the engine's thread-safe `FlutterEngineSendPlatformMessage`, so that is allowed. Handlers (listen, cancel) still run on the platform thread. The wrapper's `EventSink` is not documented as thread safe, so a plugin should use one producer thread per stream, as the example does.
+- Not verified: sandbox versus terminal start, several concurrent event channels, events after the app is backgrounded.
+
 ## Open questions (not yet verified)
 
 - Cross-compiling the engine from Windows to Linux/aarch64 is not supported upstream.
