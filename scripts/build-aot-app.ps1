@@ -14,16 +14,20 @@ param(
 # Native tools write warnings to stderr; success is checked explicitly instead.
 $ErrorActionPreference = 'Continue'
 $root = Split-Path -Parent $PSScriptRoot
-$src = Join-Path $root $App
-$work = Join-Path 'C:\src\aot-build' (Split-Path -Leaf $src)   # ASCII path: impellerc fails on non-ASCII paths
+$src = (Resolve-Path (Join-Path $root $App)).Path
 $out = Join-Path $root 'dist\aot\app'
 $cache = Join-Path $FlutterSdk 'bin\cache'
 $env:PATH = "$FlutterSdk\bin;$env:PATH"
 
-if (Test-Path $work) { Remove-Item $work -Recurse -Force }
-New-Item -ItemType Directory -Force $work | Out-Null
-Copy-Item (Join-Path $src 'lib'), (Join-Path $src 'pubspec.yaml') $work -Recurse
-if (Test-Path (Join-Path $src 'pubspec.lock')) { Copy-Item (Join-Path $src 'pubspec.lock') $work }
+# Build in a copy under an ASCII path (impellerc fails on non-ASCII paths). An app with local
+# path dependencies (path: ../some_plugin) is copied together with its siblings, so the
+# relative paths keep working.
+$hasPathDeps = (Get-Content (Join-Path $src 'pubspec.yaml') -Raw) -match '(?m)^\s+path:\s*\.\.'
+$copyRoot = if ($hasPathDeps) { Split-Path -Parent $src } else { $src }
+$workRoot = Join-Path 'C:\src\aot-build' (Split-Path -Leaf $copyRoot)
+$work = if ($hasPathDeps) { Join-Path $workRoot (Split-Path -Leaf $src) } else { $workRoot }
+if (Test-Path $workRoot) { Remove-Item $workRoot -Recurse -Force }
+robocopy $copyRoot $workRoot /E /XD build .dart_tool .git linux windows android ios macos web .idea /NFL /NDL /NJH /NJS /NP | Out-Null
 Push-Location $work
 try {
   flutter pub get | Out-Null
@@ -32,6 +36,10 @@ try {
   #    plugins' Dart implementations and then calls the app's main.
   & "$PSScriptRoot\flutter-sailfish.ps1" plugins -App $work -FlutterSdk $FlutterSdk
   if (-not (Test-Path '.dart_tool\sailfish\main.dart')) { throw 'plugin registration failed' }
+
+  # 0b. Native C++ code of the plugins, built for aarch64 in the Sailfish SDK build engine.
+  New-Item -ItemType Directory -Force $out | Out-Null
+  & "$PSScriptRoot\flutter-sailfish.ps1" native -App $work -Out "$out\plugins" -FlutterSdk $FlutterSdk
 
   # 1. AOT kernel (release, tree shaken). The -D options must go through an array in PowerShell.
   $fe = @("$cache\artifacts\engine\windows-x64\frontend_server_aot.dart.snapshot",
@@ -55,7 +63,6 @@ try {
   Pop-Location
 }
 
-New-Item -ItemType Directory -Force $out | Out-Null
 if (Test-Path "$out\flutter_assets") { Remove-Item "$out\flutter_assets" -Recurse -Force }
 Copy-Item "$work\build\flutter_assets" "$out\flutter_assets" -Recurse
 Copy-Item "$work\libapp.so" "$out\libapp.so" -Force

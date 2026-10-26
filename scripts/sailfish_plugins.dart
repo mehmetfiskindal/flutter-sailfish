@@ -9,6 +9,18 @@
 // Per plugin, the `sailfish` platform entry is used when present, otherwise `linux`
 // (Sailfish reports itself as Linux to Dart, so pure Dart Linux implementations work).
 //
+// A `sailfish` entry may also carry native C++ code:
+//
+//   flutter:
+//     plugin:
+//       platforms:
+//         sailfish:
+//           nativeSources: sailfish        # directory with the *.cc files, relative to the package
+//           nativeLibrary: my_plugin       # optional, default: the package name -> libmy_plugin.so
+//           dartPluginClass: MyPluginSailfish   # optional, a Dart class with registerWith()
+//
+// Those are listed under "native_sailfish" in plugins.json; `flutter-sailfish native` builds them.
+//
 // Run with the packages of the flutter tool, which provide `yaml` and `path`:
 //   dart --packages=<sdk>/packages/flutter_tools/.dart_tool/package_config.json \
 //        sailfish_plugins.dart <app dir>
@@ -48,6 +60,7 @@ void main(List<String> args) {
   final config = jsonDecode(configFile.readAsStringSync()) as Map<String, dynamic>;
   final plugins = <Plugin>[];
   final native = <Map<String, String>>[];
+  final nativeSailfish = <Map<String, String>>[];
   final skipped = <String>[];
 
   for (final entry in (config['packages'] as List).cast<Map<String, dynamic>>()) {
@@ -76,6 +89,22 @@ void main(List<String> args) {
     }
     final spec = platforms[platform];
     if (spec is! YamlMap) continue;
+
+    // Native code for Sailfish: a directory of C++ sources, built into lib<library>.so and
+    // loaded by the runner (see embedder/include/flutter_sailfish_plugin.h).
+    final nativeSources = spec['nativeSources'];
+    if (platform == 'sailfish' && nativeSources is String) {
+      final dir = p.normalize(p.join(root.toFilePath(), nativeSources));
+      if (!Directory(dir).existsSync()) {
+        stderr.writeln('WARNING: $name: nativeSources "$nativeSources" does not exist');
+      } else {
+        nativeSailfish.add({
+          'name': name,
+          'sources': dir,
+          'library': (spec['nativeLibrary'] as String?) ?? name,
+        });
+      }
+    }
 
     if (spec['dartPluginClass'] != null) {
       plugins.add(Plugin(name, spec['dartPluginClass'] as String, platform));
@@ -130,6 +159,7 @@ void main(List<String> args) {
     'registered': [
       for (final pl in plugins) {'name': pl.name, 'class': pl.dartClass, 'platform': pl.platform},
     ],
+    'native_sailfish': nativeSailfish,
     'native_not_supported': native,
     'endorsing_only': skipped,
   }));
@@ -137,6 +167,9 @@ void main(List<String> args) {
   stdout.writeln('flutter-sailfish: ${plugins.length} Dart plugin(s) registered');
   for (final pl in plugins) {
     stdout.writeln('  ${pl.name} (${pl.platform}) -> ${pl.dartClass}');
+  }
+  for (final n in nativeSailfish) {
+    stdout.writeln('  native: ${n['name']} -> lib${n['library']}.so (${n['sources']})');
   }
   for (final n in native) {
     stdout.writeln('  WARNING: ${n['name']} needs a native ${n['platform']} implementation '

@@ -1,0 +1,21 @@
+name: echo_plugin
+description: Example Flutter plugin with a native C++ part for Sailfish OS.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.13.7
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      sailfish:
+        # Directory (relative to this package) with the C++ sources of the native part.
+        # flutter-sailfish builds it into lib<nativeLibrary>.so and packages it with the app.
+        nativeSources: sailfish
+        nativeLibrary: echo_plugin

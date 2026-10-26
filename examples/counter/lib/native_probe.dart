@@ -1,8 +1,9 @@
 import 'dart:typed_data';
 
+import 'package:echo_plugin/echo_plugin.dart';
 import 'package:flutter/services.dart';
 
-const _channel = MethodChannel('flutter_sailfish/echo');
+const _channel = EchoPlugin.channel;
 
 /// Exercises the native echo plugin (examples/echo_plugin): every standard codec type must
 /// survive the round trip through the C++ plugin, and errors must map to the right exceptions.

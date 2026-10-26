@@ -160,7 +160,25 @@ The runner can load native plugins written against Flutter's C++ client wrapper,
 - Build with `scripts/build-native-plugin.sh <dir> <out.so>` inside the SDK build engine (`sb2`, `g++ -std=gnu++17`, plugin sources plus `standard_codec.cc` and `reply_manager.cc`). The runner itself stays C++14. The plugin must be built with the target's compiler and libstdc++ because `std::function` and `std::string` cross the boundary.
 - Example: `examples/echo_plugin` (channel `flutter_sailfish/echo`, methods `echo`, `info`, `fail`). The example app's "Native plugin test" button checks that null, bool, int, 64-bit int, double, UTF-8 string, byte/int32/int64/double lists, lists and nested maps (including an integer key) round-trip unchanged, that a 200,000 character string survives, and that an error result and an unknown method map to `PlatformException` and `MissingPluginException`. All of these passed on the Redmi Note 8; the plugin reports `Linux`, `aarch64`, C++17.
 - Not verified: whether the run was inside the Sailjail sandbox (launched from the app grid) rather than a terminal; EventChannel; plugins that use Qt or other shared libraries (dependencies must be resolvable inside the sandbox); calls from threads other than the platform thread.
-- `flutter-sailfish plugins` still only registers Dart classes; a plugin's native library is not yet built or packaged by the wrapper.
+### Native plugins in the wrapper (app package `-13`)
+
+`flutter-sailfish build` now builds and packages the plugins' native code. A plugin declares it in its own `pubspec.yaml`:
+
+```yaml
+flutter:
+  plugin:
+    platforms:
+      sailfish:
+        nativeSources: sailfish       # directory of *.cc files, relative to the package
+        nativeLibrary: echo_plugin    # optional, default: the package name -> libecho_plugin.so
+        dartPluginClass: MyClass      # optional, Dart class with a static registerWith()
+```
+
+- The flutter tool accepts a plugin that declares only the unknown `sailfish` platform (`flutter pub get` succeeds); the key is read by `scripts/sailfish_plugins.dart`, which lists such plugins under `native_sailfish` in `.dart_tool/sailfish/plugins.json`.
+- `flutter-sailfish native -App <dir> -Out <dir>` (called by the build) copies each plugin's sources, the vendored client wrapper and the plugin header into the Sailfish SDK build engine container, runs `scripts/build-native-plugin.sh` there as `mersdk` (aarch64 sb2 target) and copies `lib<name>.so` back to `dist/aot/app/plugins/`. The RPM spec installs that directory as `/usr/share/<app>/plugins/`.
+- The build copies the whole app directory (not just `lib/` and `pubspec.yaml`, as before, so assets are included now) to `C:\src\aot-build\<name>`. An app with `path: ../...` dependencies is copied together with its sibling directories so the relative paths keep working.
+- `examples/echo_plugin` is now a real plugin package (Dart API in `lib/`, C++ in `sailfish/`), and `examples/counter` depends on it with a path dependency. The library built through the wrapper is identical to the one verified on the device earlier (same build id).
+- Limits: only C++ sources compiled together with the standard codec (no extra libraries, no Qt, no per-plugin compiler flags); a plugin's `sailfish` entry cannot yet add Sailjail permissions to the desktop entry; the container names are parameters with this machine's defaults.
 
 ## Open questions (not yet verified)
 
