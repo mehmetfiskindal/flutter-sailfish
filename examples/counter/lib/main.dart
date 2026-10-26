@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'dbus_probe.dart';
 import 'package:path_provider_linux/path_provider_linux.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_linux/shared_preferences_linux.dart';
@@ -42,6 +43,7 @@ class _CounterPageState extends State<CounterPage> with WidgetsBindingObserver {
 
   // Plugin check: the tap count survives restarts if shared_preferences works on the device.
   String _storage = 'storage: loading...';
+  String _dbus = '';
 
   Future<void> _loadStored() async {
     try {
@@ -107,6 +109,16 @@ class _CounterPageState extends State<CounterPage> with WidgetsBindingObserver {
               ),
               const SizedBox(height: 16),
               Text(_storage),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () async {
+                  setState(() => _dbus = 'running...');
+                  final lines = await runDbusProbe();
+                  setState(() => _dbus = lines.join('\n'));
+                },
+                child: const Text('D-Bus test'),
+              ),
+              Text(_dbus),
               const SizedBox(height: 16),
               Text('Lifecycle: ${_lifecycle?.name ?? "unknown"}'),
               Text('Events: ${_history.join(", ")}'),

@@ -23,7 +23,8 @@ Tested on: Redmi Note 8 (`aarch64`), Sailfish OS 5.1.0.11, Flutter 3.47.8 (engin
 | Keyboard avoiding a covered field, hardware keyboard, selection handles, context menu | Not verified |
 | Accessibility | Not implemented |
 | Pure Dart Linux plugins (`shared_preferences`, `path_provider`) | Work, registered by hand in `main.dart` |
-| Native Sailfish plugins (camera, location, notifications, ...) | None yet; D-Bus from Sailjail untested |
+| D-Bus from Dart (`dbus` package): session and system bus, battery level and charger state through `mce` | Works (see docs for the sandbox caveat) |
+| Native Sailfish plugins (camera, location, notifications, ...) | None yet |
 | `armv7hl`, `i486` | Not tried |
 | Other devices and Sailfish versions | Not tested |
 | Harbour store compliance | No |
