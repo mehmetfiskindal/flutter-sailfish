@@ -45,7 +45,9 @@ Do not assume it works on your device. Reports are welcome.
 |---|---|
 | `embedder/` | The Qt runner and its qmake project |
 | `packaging/` | RPM specs, desktop entry, icon (runtime package and example app package) |
-| `scripts/build-aot-app.ps1` | Builds a Flutter app as an arm64 AOT bundle |
+| `scripts/flutter-sailfish.ps1` | Wrapper: `plugins` (generate Dart plugin registration) and `build` (AOT bundle) |
+| `scripts/sailfish_plugins.dart` | Finds plugins with a Dart implementation for `sailfish`/`linux` and writes the app's entry point |
+| `scripts/build-aot-app.ps1` | Builds a Flutter app as an arm64 AOT bundle (called by `flutter-sailfish build`) |
 | `examples/counter/` | Example app (counter, text fields, lifecycle display) |
 | `engine/flutter_engine.lock` | Pinned Flutter and engine versions |
 | `docs/engine-build.md` | Environment notes, engine build recipe, packaging, lessons learned |

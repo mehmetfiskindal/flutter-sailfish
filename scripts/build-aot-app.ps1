@@ -28,13 +28,18 @@ Push-Location $work
 try {
   flutter pub get | Out-Null
 
+  # 0. Plugin registration: generates .dart_tool\sailfish\main.dart, which registers the
+  #    plugins' Dart implementations and then calls the app's main.
+  & "$PSScriptRoot\flutter-sailfish.ps1" plugins -App $work -FlutterSdk $FlutterSdk
+  if (-not (Test-Path '.dart_tool\sailfish\main.dart')) { throw 'plugin registration failed' }
+
   # 1. AOT kernel (release, tree shaken). The -D options must go through an array in PowerShell.
   $fe = @("$cache\artifacts\engine\windows-x64\frontend_server_aot.dart.snapshot",
     '--sdk-root', "$cache\artifacts\engine\common\flutter_patched_sdk_product\",
     '--target=flutter', '--no-print-incremental-dependencies',
     '-Ddart.vm.profile=false', '-Ddart.vm.product=true', '--aot', '--tfa',
     '--packages', '.dart_tool\package_config.json', '--output-dill', 'app.dill',
-    '--verbosity=error', 'lib\main.dart')
+    '--verbosity=error', '.dart_tool\sailfish\main.dart')
   & "$cache\dart-sdk\bin\dartaotruntime.exe" @fe
   if (-not (Test-Path app.dill)) { throw 'kernel compilation failed' }
 

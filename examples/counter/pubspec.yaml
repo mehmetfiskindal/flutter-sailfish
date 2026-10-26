@@ -12,10 +12,6 @@ dependencies:
   dbus: ^0.7.11
   shared_preferences: ^2.5.0
   path_provider: ^2.1.0
-  # The Linux implementations are pure Dart; they are registered by hand in main.dart
-  # because the build does not go through the flutter tool's plugin registrant yet.
-  shared_preferences_linux: ^2.4.0
-  path_provider_linux: ^2.2.0
 
 dev_dependencies:
   flutter_test:

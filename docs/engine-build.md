@@ -128,11 +128,26 @@ Implemented in `embedder/src/main.cpp`: `flutter/platform` (SystemNavigator.pop,
 
 `examples/counter` now uses `shared_preferences` and `path_provider` through their pure Dart Linux implementations (`shared_preferences_linux`, `path_provider_linux`). The tap count persists across restarts on the Redmi Note 8 (confirmed), so pure Dart Linux plugins work on the runner.
 
-- **Registration is manual.** The build bypasses the flutter tool, so the generated `dart_plugin_registrant` does not exist. `main.dart` calls `PathProviderLinux.registerWith()` and `SharedPreferencesLinux.registerWith()` itself. A wrapper that generates this registration is still to do.
+- **Registration is generated** by `scripts/flutter-sailfish.ps1` (see below). The build bypasses the flutter tool, so the tool's own `dart_plugin_registrant` does not exist; the first version of the example called `registerWith()` by hand.
 - **Sailjail discards writes outside its directories.** An app may only write to `~/.local/share/<Org>/<App>`, `~/.config/<Org>/<App>` and `~/.cache/<Org>/<App>` (names from `[X-Sailjail]` in the desktop entry). Writing elsewhere does not fail, the data is just lost, so `path_provider` looked fine but nothing persisted. The runner now reads `OrganizationName` and `ApplicationName` from `/usr/share/applications/<name>.desktop` and sets `XDG_DATA_HOME`, `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` to those directories before starting the engine.
 - Plugin options considered: pure Dart over D-Bus (`dbus` package), Dart FFI to a C library, or a C++ plugin loaded by the runner with Flutter's `client_wrapper` (`MethodChannel`, `StandardMethodCodec`). Only the first kind of pure Dart plugin is verified; D-Bus access from inside Sailjail is not tested.
 - **D-Bus from Dart works** (pure Dart `dbus` package 0.7.x, no native code), checked on the Redmi Note 8 with the app installed from the RPM: connects to the session bus (15 names) and the system bus (10 names); calls to `com.nokia.mce` on the system bus return `get_charger_state` = `on`, `get_battery_level` = 23, `get_battery_status` = `ok` (matches `/sys/class/power_supply/battery/capacity` = 23%). `org.freedesktop.UPower` does not exist on Sailfish (`ServiceUnknown`), so battery plugins must use `mce`. `mce` exposes 71 methods, listed by `Introspect`. The probe is `examples/counter/lib/dbus_probe.dart`. Whether the run was inside the Sailjail sandbox (started from the app grid) versus a terminal was not recorded.
 - Plugins that need GTK or glib in their Linux implementation (for example `url_launcher_linux`) cannot work here.
+
+## flutter-sailfish wrapper: plugin registration
+
+`scripts/flutter-sailfish.ps1` has two commands: `plugins -App <dir>` (generate the registration for an app that has run `flutter pub get`) and `build -App <dir>` (the AOT build, which runs `plugins` first). The work is done by `scripts/sailfish_plugins.dart`:
+
+1. Reads `.dart_tool/package_config.json` and the `pubspec.yaml` of every package (skipping the app and dev-only dependencies).
+2. For each package with `flutter: plugin: platforms:`, takes the `sailfish` entry if present, otherwise `linux` (Sailfish reports itself as Linux to Dart). `dartPluginClass` entries are registered; entries that only endorse another package (`default_package`) are skipped.
+3. Writes `.dart_tool/sailfish/main.dart`, which imports the app's `main.dart` and every plugin library, calls `<Class>.registerWith()` for each (errors are caught and printed) and then the app's `main`. The AOT build compiles this file instead of `lib/main.dart`. A report goes to `.dart_tool/sailfish/plugins.json`.
+4. Warns when a plugin also has a native `pluginClass` (for example `url_launcher_linux`, whose Dart class calls a GTK part through a platform channel). The Dart class is registered but the native part does not exist in the runner, so calls will fail at run time.
+
+The script runs with `dart --packages=<sdk>/packages/flutter_tools/.dart_tool/package_config.json`, which supplies the `yaml` and `path` packages without a pubspec of its own.
+
+Checked with the example app: `path_provider_linux` and `shared_preferences_linux` are found through the app-facing packages with no direct dependency and no manual call in `main.dart`; the build compiles. Run on the device in release `-9` (see the result recorded below if present). A scratch app with `url_launcher` produced the native-part warning.
+
+Limits: a plugin needing native code is not supported; a `sailfish` entry cannot name a native class yet; the entry point detects `main(List<String>)` with a regular expression on `lib/main.dart`.
 
 ## Open questions (not yet verified)
 

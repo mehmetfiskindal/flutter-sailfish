@@ -1,7 +1,7 @@
 Name:       harbour-flutter-counter
 Summary:    Flutter counter example for Sailfish OS
 Version:    0.1.0
-Release:    8
+Release:    9
 License:    BSD-3-Clause
 URL:        https://github.com/flutter/flutter
 BuildArch:  aarch64
