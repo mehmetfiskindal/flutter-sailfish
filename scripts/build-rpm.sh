@@ -23,6 +23,9 @@ rm -rf "$S" "$T"
 mkdir -p "$S/rt" "$S/app/plugins" "$T/BUILD" "$T/RPMS" "$T/SPECS" "$T/SOURCES" "$T/SRPMS"
 
 cp "$DIST/flutter-sailfish-runner" "$DIST/libflutter_engine.so" "$DIST/icudtl.dat" "$S/rt/"
+# Sailjail permission files that the runtime installs into /etc/sailjail/permissions.
+mkdir -p "$S/rt/permissions"
+cp "$REPO"/packaging/sailjail-permissions/*.permission "$S/rt/permissions/"
 # License texts: the runtime package carries the engine's too, the app package only ours.
 cp -r "$DIST/licenses" "$S/rt/licenses"
 mkdir -p "$S/app/licenses"

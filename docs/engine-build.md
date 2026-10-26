@@ -202,6 +202,17 @@ flutter:
 - Permission names present in the target (5.1.0.11): Accounts, Ambience, AppLaunch, ApplicationInstallation, Audio, Bluetooth, Calendar, CallRecordings, Camera, CaptivePortal, CommunicationHistory, Compatibility, Connman, Contacts, Documents, Downloads, Email, FingerprintSensor, GnuPG, Internet, Location, MediaIndexing, Messages, Microphone, Music, NFC, Notifications, Phone, Pictures, PinQuery, PublicDir, RemovableMedia, Secrets, Sensors, Sharing, Synchronization, Thumbnails, UDisks, UDisksListen, UserDirs, Videos, WebView (plus `Base`, always applied).
 - Not verified: the effect of permissions other than `Internet` (for example whether `Sensors` or `Location` open the D-Bus calls their plugins need), and the older Sailfish versions' permission sets. D-Bus access inside the sandbox did work without any of them for the calls tried so far (session bus, system bus, `mce` battery queries).
 
+## What the Sailjail sandbox allows (2026-10-26, measured from inside the app, started from the app grid)
+
+Measured with the example app's "URL inspect" button on the Redmi Note 8, Sailfish OS 5.1.0.11:
+
+- **No programs:** `/bin/sh`, `/usr/bin/xdg-open`, `invoker`, `dbus-send`, `gdbus`, `gio`, `env` and `sailfish-browser` are all not visible (`stat` fails); starting `xdg-open` gives "access denied". A plugin cannot run helper programs.
+- **Session bus** (`DBUS_SESSION_BUS_ADDRESS=unix:path=/run/firejail/mnt/dbus/user`, the sandbox's proxy): 10 names with no extra permission (`ca.desrt.dconf`, `com.jolla.PinQuery`, `com.jolla.lipstick`, `com.jolla.lipstick.ConnectionSelector`, `com.nokia.profiled`, `org.freedesktop.Notifications`, `org.maliit.server`, the cover-action names, `org.freedesktop.DBus`). With the `FlutterOpenUrl` permission `org.sailfishos.browser.ui` joins them (12 names in that run, which also had a browser cover-action name).
+- Introspection works on any visible name. `org.sailfishos.browser.ui` at `/ui` offers `openUrl(as)`, `openSettings()`, `activateNewTabView()`, `requestTab(is)`, `closeTab(i)`. `com.jolla.lipstick` answers `AccessDenied` even to Introspect from the app.
+- The sandbox itself: `NoNewPrivs: 1`, `Seccomp: 2`, no capabilities, `HOME=/home/defaultuser`, `XDG_RUNTIME_DIR=/run/user/100000`.
+- Where the rules come from: `/etc/sailjail/permissions/Base.permission` (always applied; it sets `dbus-user filter`, `dbus-system filter`, `net none`) plus one `<Name>.permission` file per entry in the desktop entry's `Permissions=`. The files can be read in the SDK target (`/srv/mer/targets/<target>/etc/sailjail/permissions`) and on the device.
+- **Own permissions:** the files are plain text, so `flutter-sailfish-runtime` installs `FlutterOpenUrl.permission` (from `packaging/sailjail-permissions/`), copied from the rules that `jolla-contacts.profile` and `jolla-email.profile` use for the browser. `flutter-sailfish permissions` accepts these names in addition to the target's. Verified: with it, the browser opened the link.
+
 ## Open questions (not yet verified)
 
 - Cross-compiling the engine from Windows to Linux/aarch64 is not supported upstream.

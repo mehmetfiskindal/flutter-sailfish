@@ -1,0 +1,26 @@
+name: url_launcher_sailfish
+description: Sailfish OS implementation of the url_launcher plugin, in pure Dart over D-Bus.
+version: 0.0.1
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+  flutter: ">=3.41.0"
+
+flutter:
+  plugin:
+    # Makes flutter-sailfish skip url_launcher_linux, whose native GTK part does not exist here.
+    implements: url_launcher
+    platforms:
+      sailfish:
+        dartPluginClass: UrlLauncherSailfish
+        # Lets the app reach the browser's D-Bus service from inside the sandbox. The permission
+        # file is installed by the flutter-sailfish-runtime package (packaging/sailjail-permissions).
+        sailjailPermissions:
+          - FlutterOpenUrl
+
+dependencies:
+  flutter:
+    sdk: flutter
+  dbus: ^0.7.11
+  url_launcher_platform_interface: ^2.3.2

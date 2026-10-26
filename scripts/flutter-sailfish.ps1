@@ -99,6 +99,9 @@ switch ($Command) {
     # names against the permission files of the SDK target.
     $listing = docker exec -u mersdk $SdkContainer sh -c "ls /srv/mer/targets/$SdkTarget/etc/sailjail/permissions"
     $valid = @($listing | Where-Object { $_ -like '*.permission' } | ForEach-Object { $_ -replace '\.permission$', '' })
+    # Permissions that the runtime package itself installs (packaging\sailjail-permissions).
+    $own = Join-Path (Split-Path -Parent $PSScriptRoot) 'packaging\sailjail-permissions'
+    if (Test-Path $own) { $valid += @(Get-ChildItem $own -Filter '*.permission' | ForEach-Object { $_.BaseName }) }
     if ($valid.Count -eq 0) { Write-Warning 'could not read the Sailjail permission names; not validating' }
     $unknown = if ($valid.Count -gt 0) { @($wanted | Where-Object { $_ -notin $valid }) } else { @() }
     if ($unknown.Count -gt 0) {

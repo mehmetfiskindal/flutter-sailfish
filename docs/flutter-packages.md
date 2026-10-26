@@ -73,10 +73,25 @@ Platform interface packages (pure Dart, used by the plugins above): `camera_plat
 
 A federated plugin lets one package supply the implementation for another: a `url_launcher_sailfish` package that implements `UrlLauncherPlatform` and registers itself would make `url_launcher` work unchanged for app code. Most Sailfish services are reachable over D-Bus, which works from pure Dart (see `engine-build.md`), so many of these implementations need no native code.
 
+## Implemented so far
+
+| Plugin | Sailfish implementation | State |
+|---|---|---|
+| `url_launcher` | `packages/url_launcher_sailfish` (pure Dart, D-Bus to the browser) | Opening `http` and `https` links works on the Redmi Note 8 (confirmed: the link opened in the Sailfish browser). `mailto`, `tel` and other schemes are not supported (`canLaunchUrl` says false). Only the first launch from the app grid was checked |
+
+How this was reached, because the same constraints apply to every sandboxed plugin (details and numbers in `engine-build.md`):
+
+1. The Sailjail sandbox hides every system program (`sh`, `xdg-open`, `invoker`, `dbus-send` are not visible), so a plugin cannot start a helper process. Everything has to go through D-Bus services the sandbox lets the app reach.
+2. The session bus is filtered. By default an app sees `dconf`, `lipstick`, `maliit`, notifications, the cover-action names and a few others. The browser's service, `org.sailfishos.browser.ui` (object `/ui`, method `openUrl(as)`), is only reachable for Jolla's own apps through their profiles; no stock permission grants it. A first attempt used the wrong name (`org.sailfishos.browser`) and got `ServiceUnknown`; `lipstick`'s `openUrl` answers `AccessDenied`.
+3. Sailjail permissions are plain files in `/etc/sailjail/permissions/`, so `flutter-sailfish-runtime` installs its own, `FlutterOpenUrl`, with the two rules Jolla's contacts and email apps use for the browser. `url_launcher_sailfish` asks for it in its pubspec (`sailjailPermissions`), `flutter-sailfish` writes it into the app's desktop entry, and the app can then call the browser.
+4. Such a permission is not part of stock Sailfish OS, so apps that need it are not suitable for the Harbour store; side-loaded apps are fine.
+
+The federated override works as intended: with `url_launcher_sailfish` in the app, `flutter-sailfish` reports `url_launcher_linux ... not registered` and registers the Sailfish class.
+
 ## Suggested order
 
-1. **Override rule in `flutter-sailfish`:** when a package with a `sailfish` entry declares `implements: <app-facing package>`, the Linux implementations of that package are not registered (otherwise both would register and the last one wins).
-2. **`url_launcher_sailfish`** (pure Dart, D-Bus): small, visible, and exercises the override rule.
+1. ~~**Override rule in `flutter-sailfish`**~~ Done: a package with a `sailfish` entry that declares `implements: <app-facing package>` replaces the Linux implementations of that package.
+2. ~~**`url_launcher_sailfish`**~~ Done for web links; `mailto` and `tel` need other services (not looked at yet).
 3. **`local_auth`** (fingerprint over D-Bus, `FingerprintSensor` permission) if the device has a sensor.
 4. **`file_selector` and `image_picker`:** Sailfish's pickers are Silica QML components, which a Qt/C++ runner does not have; needs a design decision (embed QML, or a different mechanism).
 5. **`camera`, `video_player`, `webview_flutter`:** large (GStreamer or Qt Multimedia with engine textures; Gecko for web views). Plan separately.

@@ -1,7 +1,7 @@
 Name:       flutter-sailfish-runtime
 Summary:    Flutter runtime (engine and runner) for Sailfish OS
 Version:    0.1.0
-Release:    6
+Release:    7
 License:    BSD-3-Clause
 URL:        https://github.com/flutter/flutter
 BuildArch:  aarch64
@@ -22,6 +22,8 @@ install -m 755 %{stage}/libflutter_engine.so %{buildroot}/usr/libexec/flutter-sa
 install -m 644 %{stage}/icudtl.dat %{buildroot}/usr/share/flutter-sailfish/icudtl.dat
 mkdir -p %{buildroot}/usr/share/licenses/%{name}
 cp -r %{stage}/licenses/. %{buildroot}/usr/share/licenses/%{name}/
+mkdir -p %{buildroot}/etc/sailjail/permissions
+install -m 644 %{stage}/permissions/*.permission %{buildroot}/etc/sailjail/permissions/
 
 %files
 %defattr(-,root,root,-)
@@ -29,3 +31,4 @@ cp -r %{stage}/licenses/. %{buildroot}/usr/share/licenses/%{name}/
 /usr/libexec/flutter-sailfish/libflutter_engine.so
 /usr/share/flutter-sailfish/icudtl.dat
 /usr/share/licenses/%{name}
+/etc/sailjail/permissions/FlutterOpenUrl.permission

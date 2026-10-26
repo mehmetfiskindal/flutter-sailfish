@@ -20,14 +20,29 @@ $cache = Join-Path $FlutterSdk 'bin\cache'
 $env:PATH = "$FlutterSdk\bin;$env:PATH"
 
 # Build in a copy under an ASCII path (impellerc fails on non-ASCII paths). An app with local
-# path dependencies (path: ../some_plugin) is copied together with its siblings, so the
-# relative paths keep working.
-$hasPathDeps = (Get-Content (Join-Path $src 'pubspec.yaml') -Raw) -match '(?m)^\s+path:\s*\.\.'
-$copyRoot = if ($hasPathDeps) { Split-Path -Parent $src } else { $src }
+# path dependencies (path: ../some_plugin) is copied together with them: the copy is the
+# closest common parent of the app and of every such dependency, so that the relative paths
+# keep working.
+$localDeps = @()
+foreach ($m in [regex]::Matches((Get-Content (Join-Path $src 'pubspec.yaml') -Raw), '(?m)^\s+path:\s*(\S+)')) {
+  $candidate = [IO.Path]::GetFullPath((Join-Path $src $m.Groups[1].Value.Trim('"', "'")))
+  if (Test-Path $candidate -PathType Container) { $localDeps += $candidate }   # (skips "path: ^1.9.0", the version of the path package)
+}
+$copyRoot = $src
+if ($localDeps.Count -gt 0) {
+  $common = @($src.TrimEnd('\').Split('\'))
+  foreach ($dep in $localDeps) {
+    $parts = $dep.TrimEnd('\').Split('\')
+    $n = 0
+    while ($n -lt $common.Count -and $n -lt $parts.Count -and $common[$n] -ieq $parts[$n]) { $n++ }
+    $common = $common[0..($n - 1)]
+  }
+  $copyRoot = $common -join '\'
+}
 $workRoot = Join-Path 'C:\src\aot-build' (Split-Path -Leaf $copyRoot)
-$work = if ($hasPathDeps) { Join-Path $workRoot (Split-Path -Leaf $src) } else { $workRoot }
+$work = Join-Path $workRoot $src.Substring($copyRoot.Length).TrimStart('\')
 if (Test-Path $workRoot) { Remove-Item $workRoot -Recurse -Force }
-robocopy $copyRoot $workRoot /E /XD build .dart_tool .git linux windows android ios macos web .idea /NFL /NDL /NJH /NJS /NP | Out-Null
+robocopy $copyRoot $workRoot /E /XD build .dart_tool .git dist tools node_modules linux windows android ios macos web .idea /NFL /NDL /NJH /NJS /NP | Out-Null
 Push-Location $work
 try {
   flutter pub get | Out-Null
@@ -52,8 +67,14 @@ try {
     '-Ddart.vm.profile=false', '-Ddart.vm.product=true', '--aot', '--tfa',
     '--packages', '.dart_tool\package_config.json', '--output-dill', 'app.dill',
     '--verbosity=error', '.dart_tool\sailfish\main.dart')
-  & "$cache\dart-sdk\bin\dartaotruntime.exe" @fe
-  if (-not (Test-Path app.dill)) { throw 'kernel compilation failed' }
+  $feOutput = @(& "$cache\dart-sdk\bin\dartaotruntime.exe" @fe 2>&1 | ForEach-Object { "$_" })
+  # The compiler writes a kernel file even when the program has errors; the last line of its
+  # output ends with the number of errors ("<id> app.dill 2").
+  $summary = $feOutput | Where-Object { $_.Trim() } | Select-Object -Last 1
+  if (-not (Test-Path app.dill) -or $summary -notmatch '\s0$') {
+    $feOutput | Where-Object { $_ -match 'Error|error:|\.dart:\d+' } | ForEach-Object { Write-Host $_ }
+    throw "kernel compilation failed ($summary)"
+  }
 
   # 2. Assets (release bundles carry no kernel blob).
   flutter build bundle --release | Out-Null

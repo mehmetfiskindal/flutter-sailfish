@@ -20,6 +20,10 @@
 //           dartPluginClass: MyPluginSailfish   # optional, a Dart class with registerWith()
 //           sailjailPermissions: [Internet]     # optional, added to the app's desktop entry
 //
+// A package that implements another plugin for Sailfish (federated plugins) says so with
+// `flutter: plugin: implements: <app-facing package>`; the Linux implementations of that
+// package are then not registered, and are listed under "overridden" in plugins.json.
+//
 // Those are listed under "native_sailfish" in plugins.json; `flutter-sailfish native` builds them.
 // "sailjail_permissions" is the union over all plugins and the app (with the requesters in
 // "sailjail_permission_sources"); `flutter-sailfish permissions` checks and writes it.
@@ -37,10 +41,11 @@ import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
 class Plugin {
-  Plugin(this.name, this.dartClass, this.platform);
+  Plugin(this.name, this.dartClass, this.platform, this.implementsPackage);
   final String name;
   final String dartClass;
   final String platform; // 'sailfish' or 'linux'
+  final String? implementsPackage; // `flutter: plugin: implements:` (federated plugins)
 }
 
 void main(List<String> args) {
@@ -128,19 +133,50 @@ void main(List<String> args) {
       }
     }
 
+    final implementsPackage =
+        (((pubspec['flutter'] as YamlMap?)?['plugin'] as YamlMap?)?['implements']) as String?;
     if (spec['dartPluginClass'] != null) {
-      plugins.add(Plugin(name, spec['dartPluginClass'] as String, platform));
+      plugins.add(Plugin(name, spec['dartPluginClass'] as String, platform, implementsPackage));
       // A Dart class next to a native pluginClass means the Dart code talks to native code
       // through a platform channel; the Sailfish runner has no such native part yet.
       if (spec['pluginClass'] != null) {
-        native.add({'name': name, 'platform': platform, 'pluginClass': spec['pluginClass'] as String});
+        native.add({
+          'name': name,
+          'platform': platform,
+          'pluginClass': spec['pluginClass'] as String,
+          'implements': implementsPackage ?? '',
+        });
       }
     } else if (spec['default_package'] != null) {
       skipped.add('$name (endorses ${spec['default_package']})');
     } else if (spec['pluginClass'] != null) {
-      native.add({'name': name, 'platform': platform, 'pluginClass': spec['pluginClass'] as String});
+      native.add({
+        'name': name,
+        'platform': platform,
+        'pluginClass': spec['pluginClass'] as String,
+        'implements': implementsPackage ?? '',
+      });
     }
   }
+
+  // A federated plugin can have its implementation replaced: when a package with a `sailfish`
+  // entry says `implements: url_launcher`, the Linux implementations of url_launcher (which
+  // would need GTK, or would register on top of it) are dropped. Without this both would
+  // register and the last one registered would win.
+  final replacedBy = <String, String>{}; // app-facing package -> Sailfish implementation
+  for (final pl in plugins) {
+    if (pl.platform == 'sailfish' && pl.implementsPackage != null) {
+      replacedBy[pl.implementsPackage!] = pl.name;
+    }
+  }
+  final overridden = <Map<String, String>>[];
+  plugins.removeWhere((pl) {
+    final by = pl.platform == 'linux' ? replacedBy[pl.implementsPackage] : null;
+    if (by == null) return false;
+    overridden.add({'name': pl.name, 'platform': pl.platform, 'implements': pl.implementsPackage!, 'replacedBy': by});
+    return true;
+  });
+  native.removeWhere((n) => n['platform'] == 'linux' && replacedBy.containsKey(n['implements']));
   plugins.sort((a, b) => a.name.compareTo(b.name));
 
   final mainSource = File(p.join(appDir, 'lib', 'main.dart')).readAsStringSync();
@@ -185,6 +221,7 @@ void main(List<String> args) {
     'sailjail_permission_sources': {
       for (final e in permissionSources.entries) e.key: e.value.toList()..sort(),
     },
+    'overridden': overridden,
     'native_sailfish': nativeSailfish,
     'native_not_supported': native,
     'endorsing_only': skipped,
@@ -194,8 +231,11 @@ void main(List<String> args) {
   for (final pl in plugins) {
     stdout.writeln('  ${pl.name} (${pl.platform}) -> ${pl.dartClass}');
   }
+  for (final o in overridden) {
+    stdout.writeln('  ${o['name']} (linux) not registered: ${o['replacedBy']} implements ${o['implements']} for Sailfish');
+  }
   for (final n in nativeSailfish) {
-    stdout.writeln('  native: ${n['name']} -> lib${n['library']}.so (${n['sources']})');
+    stdout.writeln('  native:${n['name']} -> lib${n['library']}.so (${n['sources']})');
   }
   for (final e in permissionSources.entries) {
     stdout.writeln('  Sailjail permission ${e.key} (requested by ${(e.value.toList()..sort()).join(', ')})');

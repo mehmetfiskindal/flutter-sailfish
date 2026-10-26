@@ -31,7 +31,8 @@ are welcome.
 | Sailjail permissions declared in plugin/app pubspecs and written to the desktop entry | Works (verified with `Internet`: network blocked without it, allowed with it) |
 | Keyboard avoiding a covered field, hardware keyboard, selection handles, context menu | Not verified |
 | Accessibility | Not implemented |
-| Ready-made Sailfish plugins (camera, location, notifications, ...) | None yet |
+| `url_launcher` through `packages/url_launcher_sailfish` (web links; needs the `FlutterOpenUrl` permission, which the runtime package installs) | Works: the link opens in the Sailfish browser. `mailto`/`tel` not supported |
+| Other ready-made Sailfish plugins (camera, file picker, notifications, ...) | None yet; see `docs/flutter-packages.md` |
 | `armv7hl`, `i486`, other devices, other Sailfish versions | Not tried |
 | Harbour store compliance | No |
 | Debug (JIT) mode | Worked early on with Google's prebuilt embedder; not part of the current scripts |
@@ -66,6 +67,7 @@ are welcome.
 | `scripts/build-runner.sh`, `build-native-plugin.sh`, `build-rpm.sh` | Run inside the Sailfish SDK build engine |
 | `packaging/` | RPM specs, desktop entry template, icon |
 | `examples/counter/`, `examples/echo_plugin/` | Example app and example plugin with native code |
+| `packages/url_launcher_sailfish/` | Sailfish implementation of `url_launcher` (pure Dart, D-Bus) |
 | `engine/flutter_engine.lock` | Pinned Flutter and engine versions |
 | `docs/building.md` | How to build, step by step |
 | `docs/engine-build.md` | Notes and findings from the work: environment, lessons learned |

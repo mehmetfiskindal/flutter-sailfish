@@ -1,0 +1,11 @@
+# -*- mode: sh -*-
+
+# Sailjail permission shipped by flutter-sailfish-runtime (not part of stock Sailfish OS).
+#
+# x-sailjail-description = Open web links
+# x-sailjail-long-description = Open web links in the Sailfish browser
+
+# The browser's D-Bus interface for opening links; the same rules the stock contacts and
+# email apps get in their profiles (jolla-contacts.profile, jolla-email.profile).
+dbus-user.talk org.sailfishos.browser.ui
+dbus-user.call org.sailfishos.browser.ui=org.sailfishos.browser.ui.*@/ui

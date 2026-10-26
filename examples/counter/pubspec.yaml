@@ -11,6 +11,9 @@ dependencies:
     sdk: flutter
   echo_plugin:
     path: ../echo_plugin
+  url_launcher: ^6.3.0
+  url_launcher_sailfish:
+    path: ../../packages/url_launcher_sailfish
   dbus: ^0.7.11
   shared_preferences: ^2.5.0
   path_provider: ^2.1.0
