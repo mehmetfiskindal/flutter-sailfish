@@ -24,7 +24,8 @@ Tested on: Redmi Note 8 (`aarch64`), Sailfish OS 5.1.0.11, Flutter 3.47.8 (engin
 | Accessibility | Not implemented |
 | Pure Dart Linux plugins (`shared_preferences`, `path_provider`) | Work, registered by hand in `main.dart` |
 | D-Bus from Dart (`dbus` package): session and system bus, battery level and charger state through `mce` | Works (see docs for the sandbox caveat) |
-| Native Sailfish plugins (camera, location, notifications, ...) | None yet |
+| Native C++ plugins (Flutter's C++ client wrapper, `StandardMethodCodec`) | Work: loaded from `/usr/share/<app>/plugins/`, verified with the echo example plugin |
+| Ready-made Sailfish plugins (camera, location, notifications, ...) | None yet |
 | `armv7hl`, `i486` | Not tried |
 | Other devices and Sailfish versions | Not tested |
 | Harbour store compliance | No |
@@ -48,7 +49,10 @@ Do not assume it works on your device. Reports are welcome.
 | `scripts/flutter-sailfish.ps1` | Wrapper: `plugins` (generate Dart plugin registration) and `build` (AOT bundle) |
 | `scripts/sailfish_plugins.dart` | Finds plugins with a Dart implementation for `sailfish`/`linux` and writes the app's entry point |
 | `scripts/build-aot-app.ps1` | Builds a Flutter app as an arm64 AOT bundle (called by `flutter-sailfish build`) |
-| `examples/counter/` | Example app (counter, text fields, lifecycle display) |
+| `examples/counter/` | Example app (counter, text fields, lifecycle display, storage, D-Bus and native plugin probes) |
+| `examples/echo_plugin/` | Example native C++ plugin |
+| `embedder/include/`, `embedder/third_party/` | Plugin interface header and the vendored Flutter C++ client wrapper |
+| `scripts/build-native-plugin.sh` | Builds a native plugin for the aarch64 target in the SDK build engine |
 | `engine/flutter_engine.lock` | Pinned Flutter and engine versions |
 | `docs/engine-build.md` | Environment notes, engine build recipe, packaging, lessons learned |
 

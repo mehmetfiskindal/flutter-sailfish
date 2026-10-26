@@ -150,6 +150,18 @@ Checked with the example app: `path_provider_linux` and `shared_preferences_linu
 
 Limits: a plugin needing native code is not supported; a `sailfish` entry cannot name a native class yet; the entry point detects `main(List<String>)` with a regular expression on `lib/main.dart`.
 
+## Native C++ plugins (2026-10-26, app package `-12`)
+
+The runner can load native plugins written against Flutter's C++ client wrapper, the same API desktop plugins use (`MethodChannel`, `StandardMethodCodec`, `EncodableValue`).
+
+- `embedder/third_party/flutter_client_wrapper/`: the needed files from `engine/src/flutter/shell/platform/common/client_wrapper` (BSD, `LICENSE` included). `reply_manager.cc` is the `ReplyManager` section of Flutter's `core_implementations.cc`, extracted unchanged; the rest of that file needs the desktop C API. Without it the plugin loads with `undefined symbol ... ReplyManager`.
+- The runner is a `flutter::BinaryMessenger`: `SetMessageHandler` registers handlers on the GUI thread, `Send` posts to Dart and delivers replies on the GUI thread (they arrive on an engine thread and are handed over with a Qt event). Messages for a registered channel are dispatched to the handler before the built-in channels.
+- Plugin interface (`embedder/include/flutter_sailfish_plugin.h`): a shared library in `/usr/share/<app>/plugins/` (or `$FLUTTER_SAILFISH_PLUGINS`) exporting `FlutterSailfishPluginRegister(flutter::BinaryMessenger*)`. The runner `dlopen`s every `*.so` there before starting the engine.
+- Build with `scripts/build-native-plugin.sh <dir> <out.so>` inside the SDK build engine (`sb2`, `g++ -std=gnu++17`, plugin sources plus `standard_codec.cc` and `reply_manager.cc`). The runner itself stays C++14. The plugin must be built with the target's compiler and libstdc++ because `std::function` and `std::string` cross the boundary.
+- Example: `examples/echo_plugin` (channel `flutter_sailfish/echo`, methods `echo`, `info`, `fail`). The example app's "Native plugin test" button checks that null, bool, int, 64-bit int, double, UTF-8 string, byte/int32/int64/double lists, lists and nested maps (including an integer key) round-trip unchanged, that a 200,000 character string survives, and that an error result and an unknown method map to `PlatformException` and `MissingPluginException`. All of these passed on the Redmi Note 8; the plugin reports `Linux`, `aarch64`, C++17.
+- Not verified: whether the run was inside the Sailjail sandbox (launched from the app grid) rather than a terminal; EventChannel; plugins that use Qt or other shared libraries (dependencies must be resolvable inside the sandbox); calls from threads other than the platform thread.
+- `flutter-sailfish plugins` still only registers Dart classes; a plugin's native library is not yet built or packaged by the wrapper.
+
 ## Open questions (not yet verified)
 
 - Cross-compiling the engine from Windows to Linux/aarch64 is not supported upstream.

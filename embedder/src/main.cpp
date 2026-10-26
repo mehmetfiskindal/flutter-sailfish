@@ -28,10 +28,17 @@
 #include <QTouchEvent>
 #include <QWindow>
 
+#include <dlfcn.h>
+
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
+#include <memory>
 #include <mutex>
+#include <string>
+
+#include <flutter/binary_messenger.h>
 
 #include "flutter_embedder.h"
 
@@ -75,10 +82,28 @@ class TaskEvent : public QEvent {
   uint64_t target_nanos;
 };
 
-class Runner : public QWindow {
+// The reply to a message sent to Dart, handed over to the Qt GUI thread.
+class ReplyEvent : public QEvent {
  public:
-  Runner(QString assets, QString icu, QString aot)
-      : assets_(std::move(assets)), icu_(std::move(icu)), aot_(std::move(aot)) {
+  static QEvent::Type type() {
+    static const QEvent::Type t = static_cast<QEvent::Type>(QEvent::registerEventType());
+    return t;
+  }
+  ReplyEvent(flutter::BinaryReply reply, QByteArray data)
+      : QEvent(type()), reply(std::move(reply)), data(std::move(data)) {}
+  flutter::BinaryReply reply;
+  QByteArray data;
+};
+
+// Also the flutter::BinaryMessenger handed to native plugins, so that plugins written
+// against Flutter's C++ client wrapper (MethodChannel, StandardMethodCodec) work unchanged.
+class Runner : public QWindow, public flutter::BinaryMessenger {
+ public:
+  Runner(QString assets, QString icu, QString aot, QString plugins_dir)
+      : assets_(std::move(assets)),
+        icu_(std::move(icu)),
+        aot_(std::move(aot)),
+        plugins_dir_(std::move(plugins_dir)) {
     setSurfaceType(QSurface::OpenGLSurface);
     QSurfaceFormat fmt;
     fmt.setRenderableType(QSurfaceFormat::OpenGLES);
@@ -161,6 +186,77 @@ class Runner : public QWindow {
     return ctx ? reinterpret_cast<void*>(ctx->getProcAddress(name)) : nullptr;
   }
 
+  // ---- flutter::BinaryMessenger (for native plugins) -----------------------
+
+  // Sends a message to Dart. The reply, if requested, is delivered on the GUI thread.
+  void Send(const std::string& channel, const uint8_t* message, size_t message_size,
+            flutter::BinaryReply reply = nullptr) const override {
+    if (!engine_) {
+      if (reply) reply(nullptr, 0);
+      return;
+    }
+    FlutterPlatformMessageResponseHandle* handle = nullptr;
+    if (reply) {
+      struct Pending {
+        const Runner* runner;
+        flutter::BinaryReply reply;
+      };
+      auto* pending = new Pending{this, std::move(reply)};
+      FlutterPlatformMessageCreateResponseHandle(
+          engine_,
+          [](const uint8_t* data, size_t size, void* user_data) {
+            std::unique_ptr<Pending> p(static_cast<Pending*>(user_data));
+            QCoreApplication::postEvent(
+                const_cast<Runner*>(p->runner),
+                new ReplyEvent(std::move(p->reply),
+                               QByteArray(reinterpret_cast<const char*>(data),
+                                          data ? static_cast<int>(size) : 0)));
+          },
+          pending, &handle);
+    }
+    FlutterPlatformMessage msg = {};
+    msg.struct_size = sizeof(msg);
+    msg.channel = channel.c_str();
+    msg.message = message;
+    msg.message_size = message_size;
+    msg.response_handle = handle;
+    FlutterEngineSendPlatformMessage(engine_, &msg);
+    if (handle) FlutterPlatformMessageReleaseResponseHandle(engine_, handle);
+  }
+
+  // Registers (or, with a null handler, removes) the handler for messages from Dart on a
+  // channel. Handlers run on the GUI thread.
+  void SetMessageHandler(const std::string& channel, flutter::BinaryMessageHandler handler) override {
+    if (handler) {
+      handlers_[channel] = std::move(handler);
+    } else {
+      handlers_.erase(channel);
+    }
+  }
+
+  // ---- Native plugins ------------------------------------------------------
+
+  // Loads every *.so in the plugins directory and calls its FlutterSailfishPluginRegister.
+  void LoadPlugins() {
+    if (plugins_dir_.isEmpty()) return;
+    for (const QString& file : QDir(plugins_dir_).entryList(QStringList() << "*.so", QDir::Files)) {
+      QByteArray path = QDir(plugins_dir_).filePath(file).toLocal8Bit();
+      void* lib = dlopen(path.constData(), RTLD_NOW | RTLD_LOCAL);
+      if (!lib) {
+        fprintf(stderr, "runner: plugin %s: %s\n", path.constData(), dlerror());
+        continue;
+      }
+      auto reg = reinterpret_cast<void (*)(flutter::BinaryMessenger*)>(
+          dlsym(lib, "FlutterSailfishPluginRegister"));
+      if (!reg) {
+        fprintf(stderr, "runner: plugin %s has no FlutterSailfishPluginRegister\n", path.constData());
+        continue;
+      }
+      reg(this);
+      fprintf(stderr, "runner: loaded plugin %s\n", path.constData());
+    }
+  }
+
   // ---- Platform task runner ----------------------------------------------
   // Without a custom platform task runner the engine queues platform tasks on a
   // message loop nobody runs, so platform channel messages would never arrive.
@@ -203,6 +299,13 @@ class Runner : public QWindow {
     }
     if (e->type() == MessageEvent::type()) {
       HandleMessage(static_cast<MessageEvent*>(e));
+      return true;
+    }
+    if (e->type() == ReplyEvent::type()) {
+      auto* r = static_cast<ReplyEvent*>(e);
+      if (r->reply) {
+        r->reply(reinterpret_cast<const uint8_t*>(r->data.constData()), static_cast<size_t>(r->data.size()));
+      }
       return true;
     }
     switch (e->type()) {
@@ -358,6 +461,8 @@ class Runner : public QWindow {
     task_runners_.platform_task_runner = &platform_runner_;
     args.custom_task_runners = &task_runners_;
 
+    LoadPlugins();
+
     FlutterEngineResult r = FlutterEngineRun(FLUTTER_ENGINE_VERSION, &renderer, &args, this, &engine_);
     if (r != kSuccess || !engine_) {
       fprintf(stderr, "runner: FlutterEngineRun failed (%d)\n", static_cast<int>(r));
@@ -439,6 +544,19 @@ class Runner : public QWindow {
     VLOG("runner: message on %s (%d bytes) %s\n", qPrintable(m->channel), m->data.size(),
             qPrintable(QString::fromUtf8(m->data.left(100))));
     if (!engine_) return;
+    // Channels registered by native plugins come first.
+    auto handler = handlers_.find(m->channel.toStdString());
+    if (handler != handlers_.end()) {
+      const FlutterPlatformMessageResponseHandle* response = m->handle;
+      handler->second(reinterpret_cast<const uint8_t*>(m->data.constData()),
+                      static_cast<size_t>(m->data.size()),
+                      [this, response](const uint8_t* data, size_t size) {
+                        if (response) {
+                          FlutterEngineSendPlatformMessageResponse(engine_, response, data, size);
+                        }
+                      });
+      return;
+    }
     if (m->channel == "flutter/textinput" || m->channel == "flutter/platform") {
       QJsonObject call = QJsonDocument::fromJson(m->data).object();
       QString method = call.value("method").toString();
@@ -701,7 +819,8 @@ class Runner : public QWindow {
 
   // ---- State -------------------------------------------------------------
 
-  QString assets_, icu_, aot_;
+  QString assets_, icu_, aot_, plugins_dir_;
+  std::map<std::string, flutter::BinaryMessageHandler> handlers_;
   QOffscreenSurface offscreen_;
   QOpenGLContext* context_ = nullptr;
   QOpenGLContext* resource_context_ = nullptr;
@@ -757,7 +876,8 @@ void RedirectXdgDirsForSailjail(const QString& app_name) {
 
 int main(int argc, char** argv) {
   QGuiApplication app(argc, argv);
-  QString assets, icu, aot;
+  QString assets, icu, aot, plugins;
+  if (const char* env = getenv("FLUTTER_SAILFISH_PLUGINS")) plugins = QString::fromLocal8Bit(env);
   if (argc >= 3) {
     assets = QString::fromLocal8Bit(argv[1]);
     icu = QString::fromLocal8Bit(argv[2]);
@@ -777,8 +897,9 @@ int main(int argc, char** argv) {
     icu = QFileInfo::exists(base + "/icudtl.dat") ? base + "/icudtl.dat"
                                                   : "/usr/share/flutter-sailfish/icudtl.dat";
     if (QFileInfo::exists(base + "/lib/libapp.so")) aot = base + "/lib/libapp.so";
+    if (plugins.isEmpty()) plugins = base + "/plugins";
   }
-  Runner runner(assets, icu, aot);
+  Runner runner(assets, icu, aot, plugins);
   runner.setGeometry(QGuiApplication::primaryScreen()->geometry());
   runner.showFullScreen();
   return app.exec();
