@@ -140,6 +140,16 @@ switch ($Command) {
     foreach ($f in 'libflutter_engine.so', 'icudtl.dat') {
       if (Test-Path (Join-Path $engine $f)) { Copy-Item (Join-Path $engine $f) $dist -Force }
     }
+    # License texts that go into the packages (/usr/share/licenses/<package>/).
+    $licenses = Join-Path $dist 'licenses'
+    if (Test-Path $licenses) { Remove-Item $licenses -Recurse -Force }
+    New-Item -ItemType Directory -Force $licenses | Out-Null
+    Copy-Item (Join-Path $repo 'LICENSE') (Join-Path $licenses 'LICENSE')
+    Copy-Item (Join-Path $repo 'THIRD_PARTY_NOTICES.md') $licenses
+    Copy-Item (Join-Path $repo 'embedder\third_party\flutter_engine\LICENSE') (Join-Path $licenses 'LICENSE.flutter')
+    $engineLicense = Join-Path $engine 'LICENSE.engine'
+    if (-not (Test-Path $engineLicense)) { throw "$engineLicense missing; run scripts\export-engine.ps1 first." }
+    Copy-Item $engineLicense $licenses
     foreach ($f in 'flutter-sailfish-runner', 'libflutter_engine.so', 'icudtl.dat', 'libapp.so', 'flutter_assets') {
       if (-not (Test-Path (Join-Path $dist $f))) { throw "$f missing in $dist; run runner, export-engine and build first." }
     }

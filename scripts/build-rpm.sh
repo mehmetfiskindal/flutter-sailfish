@@ -23,6 +23,10 @@ rm -rf "$S" "$T"
 mkdir -p "$S/rt" "$S/app/plugins" "$T/BUILD" "$T/RPMS" "$T/SPECS" "$T/SOURCES" "$T/SRPMS"
 
 cp "$DIST/flutter-sailfish-runner" "$DIST/libflutter_engine.so" "$DIST/icudtl.dat" "$S/rt/"
+# License texts: the runtime package carries the engine's too, the app package only ours.
+cp -r "$DIST/licenses" "$S/rt/licenses"
+mkdir -p "$S/app/licenses"
+cp "$DIST/licenses/LICENSE" "$DIST/licenses/THIRD_PARTY_NOTICES.md" "$S/app/licenses/"
 cp -r "$DIST/flutter_assets" "$S/app/flutter_assets"
 cp "$DIST/libapp.so" "$DIST/flutter-sailfish-runner" "$DIST/icudtl.dat" "$S/app/"
 cp "$DIST"/plugins/*.so "$S/app/plugins/" 2>/dev/null || echo "no native plugins"
