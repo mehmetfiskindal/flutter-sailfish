@@ -69,6 +69,7 @@ are welcome.
 | `engine/flutter_engine.lock` | Pinned Flutter and engine versions |
 | `docs/building.md` | How to build, step by step |
 | `docs/engine-build.md` | Notes and findings from the work: environment, lessons learned |
+| `docs/flutter-packages.md` | Which packages of `flutter/packages` work on Sailfish today, and a plan (`scripts/survey_packages.dart` regenerates the table) |
 
 Not in the repository: the Flutter engine sources and every build output.
 
