@@ -18,8 +18,11 @@
 //           nativeSources: sailfish        # directory with the *.cc files, relative to the package
 //           nativeLibrary: my_plugin       # optional, default: the package name -> libmy_plugin.so
 //           dartPluginClass: MyPluginSailfish   # optional, a Dart class with registerWith()
+//           sailjailPermissions: [Internet]     # optional, added to the app's desktop entry
 //
 // Those are listed under "native_sailfish" in plugins.json; `flutter-sailfish native` builds them.
+// "sailjail_permissions" is the union over all plugins and the app (with the requesters in
+// "sailjail_permission_sources"); `flutter-sailfish permissions` checks and writes it.
 //
 // Run with the packages of the flutter tool, which provide `yaml` and `path`:
 //   dart --packages=<sdk>/packages/flutter_tools/.dart_tool/package_config.json \
@@ -62,6 +65,18 @@ void main(List<String> args) {
   final native = <Map<String, String>>[];
   final nativeSailfish = <Map<String, String>>[];
   final skipped = <String>[];
+  final permissionSources = <String, Set<String>>{}; // permission -> who asked for it
+
+  // The app itself can ask for permissions too:
+  //   flutter:
+  //     sailfish:
+  //       sailjailPermissions: [Internet]
+  final appSailfish = (appPubspec['flutter'] as YamlMap?)?['sailfish'];
+  if (appSailfish is YamlMap && appSailfish['sailjailPermissions'] is YamlList) {
+    for (final permission in (appSailfish['sailjailPermissions'] as YamlList).cast<String>()) {
+      permissionSources.putIfAbsent(permission, () => <String>{}).add('$appName (app)');
+    }
+  }
 
   for (final entry in (config['packages'] as List).cast<Map<String, dynamic>>()) {
     final name = entry['name'] as String;
@@ -92,6 +107,13 @@ void main(List<String> args) {
 
     // Native code for Sailfish: a directory of C++ sources, built into lib<library>.so and
     // loaded by the runner (see embedder/include/flutter_sailfish_plugin.h).
+    // Sailjail permissions the plugin needs; they end up in the app's desktop entry.
+    if (platform == 'sailfish' && spec['sailjailPermissions'] is YamlList) {
+      for (final permission in (spec['sailjailPermissions'] as YamlList).cast<String>()) {
+        permissionSources.putIfAbsent(permission, () => <String>{}).add(name);
+      }
+    }
+
     final nativeSources = spec['nativeSources'];
     if (platform == 'sailfish' && nativeSources is String) {
       final dir = p.normalize(p.join(root.toFilePath(), nativeSources));
@@ -159,6 +181,10 @@ void main(List<String> args) {
     'registered': [
       for (final pl in plugins) {'name': pl.name, 'class': pl.dartClass, 'platform': pl.platform},
     ],
+    'sailjail_permissions': permissionSources.keys.toList()..sort(),
+    'sailjail_permission_sources': {
+      for (final e in permissionSources.entries) e.key: e.value.toList()..sort(),
+    },
     'native_sailfish': nativeSailfish,
     'native_not_supported': native,
     'endorsing_only': skipped,
@@ -170,6 +196,9 @@ void main(List<String> args) {
   }
   for (final n in nativeSailfish) {
     stdout.writeln('  native: ${n['name']} -> lib${n['library']}.so (${n['sources']})');
+  }
+  for (final e in permissionSources.entries) {
+    stdout.writeln('  Sailjail permission ${e.key} (requested by ${(e.value.toList()..sort()).join(', ')})');
   }
   for (final n in native) {
     stdout.writeln('  WARNING: ${n['name']} needs a native ${n['platform']} implementation '

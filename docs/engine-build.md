@@ -188,6 +188,30 @@ flutter:
 - Events are sent from a non-platform thread: the runner's `Send` calls the engine's thread-safe `FlutterEngineSendPlatformMessage`, so that is allowed. Handlers (listen, cancel) still run on the platform thread. The wrapper's `EventSink` is not documented as thread safe, so a plugin should use one producer thread per stream, as the example does.
 - Not verified: sandbox versus terminal start, several concurrent event channels, events after the app is backgrounded.
 
+## Sailjail permissions from plugin pubspecs (2026-10-26, app packages `-15` and `-16`)
+
+A plugin lists the Sailjail permissions it needs in its own pubspec, and the app can do the same:
+
+```yaml
+# plugin pubspec.yaml
+flutter:
+  plugin:
+    platforms:
+      sailfish:
+        sailjailPermissions: [Internet]
+
+# app pubspec.yaml
+flutter:
+  sailfish:
+    sailjailPermissions: [Internet]
+```
+
+- `scripts/sailfish_plugins.dart` collects the union over all plugins and the app (with who asked for each) into `plugins.json`. `flutter-sailfish permissions -App <dir> -Out <file>` (run by the build) validates the names against the `*.permission` files in `/etc/sailjail/permissions` of the SDK target, because Sailjail refuses to start an app that names an unknown permission, and writes `dist/aot/app/sailjail-permissions.txt`.
+- `scripts/build-rpm.sh` (new; the RPM build used to live only in scratch files) builds both RPMs in the SDK build engine and fills the `Permissions=` line of the desktop entry template from that file (`Permissions=Internet;`). Run it as `mersdk` in the container with `REPO` set to the repository root as seen there.
+- **Verified on the Redmi Note 8:** the example app's network test (DNS and HTTPS to example.com) failed in package `-15`, where no permission was requested, and succeeded in `-16`, where `echo_plugin` asks for `Internet`. This matches `Internet.permission`, which lifts the sandbox's `net none`. The exact error text of the failing run was not recorded. Both were started from the app grid.
+- Permission names present in the target (5.1.0.11): Accounts, Ambience, AppLaunch, ApplicationInstallation, Audio, Bluetooth, Calendar, CallRecordings, Camera, CaptivePortal, CommunicationHistory, Compatibility, Connman, Contacts, Documents, Downloads, Email, FingerprintSensor, GnuPG, Internet, Location, MediaIndexing, Messages, Microphone, Music, NFC, Notifications, Phone, Pictures, PinQuery, PublicDir, RemovableMedia, Secrets, Sensors, Sharing, Synchronization, Thumbnails, UDisks, UDisksListen, UserDirs, Videos, WebView (plus `Base`, always applied).
+- Not verified: the effect of permissions other than `Internet` (for example whether `Sensors` or `Location` open the D-Bus calls their plugins need), and the older Sailfish versions' permission sets. D-Bus access inside the sandbox did work without any of them for the calls tried so far (session bus, system bus, `mce` battery queries).
+
 ## Open questions (not yet verified)
 
 - Cross-compiling the engine from Windows to Linux/aarch64 is not supported upstream.

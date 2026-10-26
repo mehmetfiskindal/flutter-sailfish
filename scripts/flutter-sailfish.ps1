@@ -4,8 +4,12 @@
 #                                                            for an app that has run "flutter pub get"
 #   flutter-sailfish.ps1 native  -App <dir> -Out <plugins>   build the plugins' native C++ code
 #                                                            (needs "plugins" first)
+#   flutter-sailfish.ps1 permissions -App <dir> -Out <file> check the Sailjail permissions that
+#                                                            plugins and the app ask for and write
+#                                                            them to a file (one per line)
 #   flutter-sailfish.ps1 build   -App <dir>                  build an AOT bundle: plugins, native
-#                                                            plugins, kernel, assets, libapp.so
+#                                                            plugins, permissions, kernel, assets,
+#                                                            libapp.so
 #
 # The flutter tool does not know the Sailfish platform, so what it would generate for Linux,
 # Android and so on is produced here by scripts\sailfish_plugins.dart. A plugin is picked up
@@ -19,12 +23,14 @@
 #           dartPluginClass: MyPluginSailfish   # Dart class with a static registerWith()
 #           nativeSources: sailfish             # directory of *.cc files, built into a .so
 #           nativeLibrary: my_plugin            # optional, default: the package name
+#           sailjailPermissions: [Internet]     # optional, added to the app's desktop entry
 param(
-  [Parameter(Position = 0)][ValidateSet('plugins', 'native', 'build', 'help')][string]$Command = 'help',
+  [Parameter(Position = 0)][ValidateSet('plugins', 'native', 'permissions', 'build', 'help')][string]$Command = 'help',
   [string]$App = '.',
   [string]$Out,
   [string]$FlutterSdk = 'C:\src\flutter-sdk',
-  [string]$SdkContainer = 'sailfish-sdk-build-engine_mfisk'
+  [string]$SdkContainer = 'sailfish-sdk-build-engine_mfisk',
+  [string]$SdkTarget = 'SailfishOS-5.1.0.11-aarch64'
 )
 $ErrorActionPreference = 'Continue'
 
@@ -66,10 +72,33 @@ switch ($Command) {
       if (-not (Test-Path (Join-Path $Out "lib$($n.library).so"))) { throw "lib$($n.library).so was not produced" }
     }
   }
+  'permissions' {
+    if (-not $Out) { throw 'permissions needs -Out <file to write the permission list to>' }
+    $report = Join-Path (Resolve-Path $App) '.dart_tool\sailfish\plugins.json'
+    if (-not (Test-Path $report)) { throw "$report not found; run the plugins command first." }
+    $json = Get-Content $report -Raw | ConvertFrom-Json
+    $wanted = @($json.sailjail_permissions | Where-Object { $_ })
+
+    # Sailjail refuses to start an app that names a permission it does not know, so check the
+    # names against the permission files of the SDK target.
+    $listing = docker exec -u mersdk $SdkContainer sh -c "ls /srv/mer/targets/$SdkTarget/etc/sailjail/permissions"
+    $valid = @($listing | Where-Object { $_ -like '*.permission' } | ForEach-Object { $_ -replace '\.permission$', '' })
+    if ($valid.Count -eq 0) { Write-Warning 'could not read the Sailjail permission names; not validating' }
+    $unknown = if ($valid.Count -gt 0) { @($wanted | Where-Object { $_ -notin $valid }) } else { @() }
+    if ($unknown.Count -gt 0) {
+      throw "unknown Sailjail permission(s): $($unknown -join ', '). Known: $($valid -join ', ')"
+    }
+    # Written without a BOM, one name per line; an empty file means "no permissions".
+    [IO.File]::WriteAllText($Out, (($wanted | ForEach-Object { "$_`n" }) -join ''), (New-Object Text.UTF8Encoding $false))
+    foreach ($p in $wanted) {
+      Write-Host ("flutter-sailfish: permission {0} <- {1}" -f $p, (@($json.sailjail_permission_sources.$p) -join ', '))
+    }
+    if ($wanted.Count -eq 0) { Write-Host 'flutter-sailfish: no Sailjail permissions requested' }
+  }
   'build' {
     & (Join-Path $PSScriptRoot 'build-aot-app.ps1') -App $App -FlutterSdk $FlutterSdk
   }
   default {
-    Get-Content $PSCommandPath -TotalCount 22 | ForEach-Object { $_ -replace '^# ?', '' }
+    Get-Content $PSCommandPath -TotalCount 28 | ForEach-Object { $_ -replace '^# ?', '' }
   }
 }

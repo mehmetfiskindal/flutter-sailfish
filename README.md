@@ -25,6 +25,7 @@ Tested on: Redmi Note 8 (`aarch64`), Sailfish OS 5.1.0.11, Flutter 3.47.8 (engin
 | Pure Dart Linux plugins (`shared_preferences`, `path_provider`) | Work, registered by hand in `main.dart` |
 | D-Bus from Dart (`dbus` package): session and system bus, battery level and charger state through `mce` | Works (see docs for the sandbox caveat) |
 | Native C++ plugins (Flutter's C++ client wrapper, `StandardMethodCodec`) | Work: loaded from `/usr/share/<app>/plugins/`, verified with the echo example plugin |
+| Sailjail permissions declared in plugin/app pubspecs and written to the desktop entry | Works (verified with `Internet`: network blocked without it, allowed with it) |
 | Ready-made Sailfish plugins (camera, location, notifications, ...) | None yet |
 | `armv7hl`, `i486` | Not tried |
 | Other devices and Sailfish versions | Not tested |
@@ -53,6 +54,7 @@ Do not assume it works on your device. Reports are welcome.
 | `examples/echo_plugin/` | Example native C++ plugin |
 | `embedder/include/`, `embedder/third_party/` | Plugin interface header and the vendored Flutter C++ client wrapper |
 | `scripts/build-native-plugin.sh` | Builds a native plugin for the aarch64 target in the SDK build engine |
+| `scripts/build-rpm.sh` | Builds the runtime and app RPMs in the SDK build engine (fills in the Sailjail permissions) |
 | `engine/flutter_engine.lock` | Pinned Flutter and engine versions |
 | `docs/engine-build.md` | Environment notes, engine build recipe, packaging, lessons learned |
 
@@ -74,7 +76,7 @@ The paths and tools in the scripts reflect the author's Windows + Docker setup a
 - Every Flutter release needs a matching engine rebuild.
 - The runner still prints some diagnostics to stderr; set `FLUTTER_SAILFISH_VERBOSE=1` for per-message logging.
 - The example package is called `harbour-flutter-counter` only because it was the first name used. The `harbour-` prefix is meant for apps accepted into the Harbour store, so rename it for your own work.
-- The desktop entry grants no Sailjail permissions.
+- The desktop entry only has the Sailjail permissions that plugins or the app ask for in their pubspecs (none by default, so no network).
 
 ## License
 

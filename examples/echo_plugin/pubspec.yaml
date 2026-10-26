@@ -19,3 +19,8 @@ flutter:
         # flutter-sailfish builds it into lib<nativeLibrary>.so and packages it with the app.
         nativeSources: sailfish
         nativeLibrary: echo_plugin
+        # Sailjail permissions the app needs because of this plugin; flutter-sailfish writes
+        # them into the app's desktop entry. (The echo plugin does not really need Internet;
+        # the example app's network test uses it to show the permission taking effect.)
+        sailjailPermissions:
+          - Internet

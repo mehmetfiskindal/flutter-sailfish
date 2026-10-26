@@ -41,6 +41,10 @@ try {
   New-Item -ItemType Directory -Force $out | Out-Null
   & "$PSScriptRoot\flutter-sailfish.ps1" native -App $work -Out "$out\plugins" -FlutterSdk $FlutterSdk
 
+  # 0c. Sailjail permissions asked for by the plugins and the app; the RPM build writes them
+  #     into the desktop entry.
+  & "$PSScriptRoot\flutter-sailfish.ps1" permissions -App $work -Out "$out\sailjail-permissions.txt" -FlutterSdk $FlutterSdk
+
   # 1. AOT kernel (release, tree shaken). The -D options must go through an array in PowerShell.
   $fe = @("$cache\artifacts\engine\windows-x64\frontend_server_aot.dart.snapshot",
     '--sdk-root', "$cache\artifacts\engine\common\flutter_patched_sdk_product\",
