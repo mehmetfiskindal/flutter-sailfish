@@ -124,6 +124,15 @@ Implemented in `embedder/src/main.cpp`: `flutter/platform` (SystemNavigator.pop,
 - Not yet checked: layout when the keyboard covers a field, hardware keyboards, IME composition for languages that use preedit text, text selection handles and the context menu, accessibility.
 - `FLUTTER_SAILFISH_VERBOSE=1` enables per-message and per-input-event logging.
 
+## Plugins: first experiment (2026-10-26)
+
+`examples/counter` now uses `shared_preferences` and `path_provider` through their pure Dart Linux implementations (`shared_preferences_linux`, `path_provider_linux`). The tap count persists across restarts on the Redmi Note 8 (confirmed), so pure Dart Linux plugins work on the runner.
+
+- **Registration is manual.** The build bypasses the flutter tool, so the generated `dart_plugin_registrant` does not exist. `main.dart` calls `PathProviderLinux.registerWith()` and `SharedPreferencesLinux.registerWith()` itself. A wrapper that generates this registration is still to do.
+- **Sailjail discards writes outside its directories.** An app may only write to `~/.local/share/<Org>/<App>`, `~/.config/<Org>/<App>` and `~/.cache/<Org>/<App>` (names from `[X-Sailjail]` in the desktop entry). Writing elsewhere does not fail, the data is just lost, so `path_provider` looked fine but nothing persisted. The runner now reads `OrganizationName` and `ApplicationName` from `/usr/share/applications/<name>.desktop` and sets `XDG_DATA_HOME`, `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` to those directories before starting the engine.
+- Plugin options considered: pure Dart over D-Bus (`dbus` package), Dart FFI to a C library, or a C++ plugin loaded by the runner with Flutter's `client_wrapper` (`MethodChannel`, `StandardMethodCodec`). Only the first kind of pure Dart plugin is verified; D-Bus access from inside Sailjail is not tested.
+- Plugins that need GTK or glib in their Linux implementation (for example `url_launcher_linux`) cannot work here.
+
 ## Open questions (not yet verified)
 
 - Cross-compiling the engine from Windows to Linux/aarch64 is not supported upstream.

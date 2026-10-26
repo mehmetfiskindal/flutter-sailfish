@@ -6,6 +6,8 @@
 
 #include <QCoreApplication>
 #include <QClipboard>
+#include <QDir>
+#include <QSettings>
 #include <QEvent>
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -726,6 +728,31 @@ class Runner : public QWindow {
   QRect caret_rect_;
 };
 
+// Sailjail only lets an app write to ~/.local/share/<Org>/<App>, ~/.config/<Org>/<App> and
+// ~/.cache/<Org>/<App>. Writes anywhere else do not fail but are silently discarded, which
+// breaks plugins (path_provider, shared_preferences) that use the standard XDG directories.
+// Point the XDG base directories at the permitted ones, using the names from the desktop entry.
+void RedirectXdgDirsForSailjail(const QString& app_name) {
+  QSettings desktop("/usr/share/applications/" + app_name + ".desktop", QSettings::IniFormat);
+  QString org = desktop.value("X-Sailjail/OrganizationName").toString();
+  QString app = desktop.value("X-Sailjail/ApplicationName").toString();
+  const char* home = getenv("HOME");
+  if (org.isEmpty() || app.isEmpty() || !home) return;
+
+  struct Dir {
+    const char* variable;
+    const char* parent;
+  };
+  const Dir dirs[] = {{"XDG_DATA_HOME", "/.local/share/"},
+                      {"XDG_CONFIG_HOME", "/.config/"},
+                      {"XDG_CACHE_HOME", "/.cache/"}};
+  for (const Dir& d : dirs) {
+    QString path = QString::fromLocal8Bit(home) + d.parent + org + "/" + app;
+    QDir().mkpath(path);
+    qputenv(d.variable, path.toLocal8Bit());
+  }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -744,6 +771,7 @@ int main(int argc, char** argv) {
       return 2;
     }
     QString base = "/usr/share/" + name;
+    RedirectXdgDirsForSailjail(name);
     assets = base + "/flutter_assets";
     // The sandbox only exposes the app's own /usr/share directory, so prefer a copy shipped there.
     icu = QFileInfo::exists(base + "/icudtl.dat") ? base + "/icudtl.dat"

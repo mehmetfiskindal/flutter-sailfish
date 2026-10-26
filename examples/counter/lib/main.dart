@@ -1,6 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path_provider_linux/path_provider_linux.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_linux/shared_preferences_linux.dart';
 
-void main() => runApp(const CounterApp());
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Normally the flutter tool generates this registration; the Sailfish build does not run it yet.
+  PathProviderLinux.registerWith();
+  SharedPreferencesLinux.registerWith();
+  runApp(const CounterApp());
+}
 
 class CounterApp extends StatelessWidget {
   const CounterApp({super.key});
@@ -27,6 +37,33 @@ class _CounterPageState extends State<CounterPage> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _lifecycle = WidgetsBinding.instance.lifecycleState;
+    _loadStored();
+  }
+
+  // Plugin check: the tap count survives restarts if shared_preferences works on the device.
+  String _storage = 'storage: loading...';
+
+  Future<void> _loadStored() async {
+    try {
+      final dir = await getApplicationSupportDirectory();
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getInt('count') ?? 0;
+      setState(() {
+        _count = saved;
+        _storage = 'storage OK, restored $saved\n${dir.path}';
+      });
+    } catch (e) {
+      setState(() => _storage = 'storage failed: $e');
+    }
+  }
+
+  Future<void> _saveCount() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('count', _count);
+    } catch (e) {
+      setState(() => _storage = 'save failed: $e');
+    }
   }
 
   @override
@@ -69,13 +106,18 @@ class _CounterPageState extends State<CounterPage> with WidgetsBindingObserver {
                 decoration: InputDecoration(labelText: 'Multiline', border: OutlineInputBorder()),
               ),
               const SizedBox(height: 16),
+              Text(_storage),
+              const SizedBox(height: 16),
               Text('Lifecycle: ${_lifecycle?.name ?? "unknown"}'),
               Text('Events: ${_history.join(", ")}'),
             ],
           ),
         ),
         floatingActionButton: FloatingActionButton(
-          onPressed: () => setState(() => _count++),
+          onPressed: () {
+            setState(() => _count++);
+            _saveCount();
+          },
           child: const Icon(Icons.add),
         ),
       );
